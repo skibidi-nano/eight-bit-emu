@@ -1,0 +1,13 @@
+{ pkgs ? import <nixpkgs> {} }:
+
+pkgs.mkShell {
+  buildInputs = with pkgs; [
+    clang
+    clang-tools 
+    gdb         
+    gnumake  
+    ncurses   
+    valgrind
+    cgdb
+  ];
+}

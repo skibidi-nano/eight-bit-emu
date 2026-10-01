@@ -1,0 +1,22 @@
+# nix artifacts
+result
+result-*
+.direnv/
+.nix-gc-roots/
+.nix
+
+# build artifacts
+*.o
+*.a
+*.d
+*.so
+*.out
+*.app
+
+# executable
+main
+
+# editor/system
+.DS_Store
+*.swp
+*~
