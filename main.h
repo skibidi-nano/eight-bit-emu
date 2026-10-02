@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct 
 {
@@ -15,9 +17,8 @@ typedef struct
     uint16_t stack[16];
     uint8_t  delay_timer;
     uint8_t  sound_timer;
-    uint8_t  gfx[64 * 32];
+    uint8_t  gfx[64][32];
     bool     keypad[16];
-    bool     vf;
 } 
 my_chip;
 

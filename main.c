@@ -2,6 +2,8 @@
 
 my_chip chip;
 
+void cycle(void);
+
 int main(void)
 {
 
@@ -9,14 +11,7 @@ int main(void)
 
     while(run)
     {
-        
-
-
-
-        switch (opcode)
-        {
-            
-        }
+        cycle();
     }
 
     printf("CPU shutting down");
@@ -29,21 +24,40 @@ void cycle(void)
     uint16_t opcode = (chip.memory[chip.pc] << 8) | chip.memory[chip.pc + 1];
     chip.pc += 2;
 
+    uint8_t n = (opcode & 0x000F);
     uint8_t x = (opcode & 0x0F00) >> 8;
     uint8_t y = (opcode & 0x00F0) >> 4;
     uint8_t kk = opcode & 0x00FF;
     uint16_t nnn = opcode & 0x0FFF;
 
-    switch (opcode & 0xF000)
+    switch ((opcode & 0xF000) >> 12)
     {
+
+        case 0x0:
+            switch (kk)
+            {
+                case 0xE0:
+                    memset(chip.gfx, 0, sizeof(chip.gfx));
+                    break;
+
+                case 0xEE:
+                    if (chip.sp > 0)
+                    {
+                        chip.sp--;
+                        chip.pc = chip.stack[chip.sp];
+                    }
+                    break;
+            }
+            break;
+
         case 0x1:
             chip.pc = nnn;
             break;
         
         case 0x2:
-            chip.stack[chip.st] = chip.pc;
-            chip.st++;
-            chip.pc = nnn; 
+            chip.stack[chip.sp] = chip.pc;
+            chip.sp++;
+            chip.pc = nnn;
             break;
 
         case 0x3:
@@ -95,43 +109,184 @@ void cycle(void)
                     break;
 
                 case 0x4:
-                    chip.v_reg[x] += chip.v_reg[y];
-                    if ((chip.v_reg[x] + chip.v_reg[y]) > 0x00F0)
-                    {
-                        chip.vf = true;
-                    }
+                {
+                    uint16_t sum = chip.v_reg[x] + chip.v_reg[y];
+                    chip.v_reg[x] = sum & 0xFF;
+                    chip.v_reg[0xF] = (sum > 0xFF) ? 1 : 0;
                     break;
+                }
 
                 case 0x5:
-                    chip.vf = false;
-                    if (chip.v_reg[x] > chip.v_reg[y])
-                    {
-                        chip.vf = true;
-                    }
+                {
+                    uint8_t flag = (chip.v_reg[x] >= chip.v_reg[y]) ? 1 : 0;
                     chip.v_reg[x] -= chip.v_reg[y];
+                    chip.v_reg[0xF] = flag;
                     break;
+                }
 
                 case 0x6:
-                    if ((chip.v_reg[x] & 1) == 1)
-                    {
-                        chip.vf = 1;
-                    }
-                    else
-                    {
-                        chip.vf = 0;
-                    }
+                {
+                    uint8_t lsb = chip.v_reg[x] & 0x01;
                     chip.v_reg[x] >>= 1;
+                    chip.v_reg[0xF] = lsb;
                     break;
+                }
 
+                case 0x7:
+                {
+                    uint8_t flag = (chip.v_reg[x] <= chip.v_reg[y]) ? 1 : 0;
+                    chip.v_reg[x] = chip.v_reg[y] - chip.v_reg[x];
+                    chip.v_reg[0xF] = flag;
+                    break;
+                }
+
+                case 0xE:
+                {
+                    uint8_t msb = (chip.v_reg[x] & 0x80) >> 7;
+                    chip.v_reg[x] <<= 1;
+                    chip.v_reg[0xF] = msb;
+                    break;
+                }
 
             }
-            
+
             break;
 
         case 0x9:
-            
+            if (chip.v_reg[x] != chip.v_reg[y])
+            {
+                chip.pc += 2;
+            }
+            break;
+
+        case 0xA:
+            chip.index_reg = nnn;
+            break;
+
+        case 0xB:
+            chip.pc = nnn + chip.v_reg[0x0];
+            break;
+
+        case 0xC:
+            chip.v_reg[x] = (rand() % 256) & kk;
+            break;
+
+        case 0xD:
+        {
+            uint8_t x_pos = chip.v_reg[x] % 64;
+            uint8_t y_pos = chip.v_reg[y] % 32;
+    
+            chip.v_reg[0xF] = 0;
+
+            for (int row = 0; row < n; row++) 
+            {
+                uint8_t sprite_byte = chip.memory[chip.index_reg + row];
+
+                for (int col = 0; col < 8; col++)  
+                {
+                    if ((sprite_byte & (0x80 >> col)) != 0) 
+                    {
+                        uint8_t px = (x_pos + col) % 64;
+                        uint8_t py = (y_pos + row) % 32;
+
+                        if (chip.gfx[px][py] == 1) 
+                        {
+                            chip.v_reg[0xF] = 1;
+                        }   
+                        chip.gfx[px][py] ^= 1;
+                    }
+                }
+            }
+            break;
+        }
+
+        case 0xE:
+            switch(kk)
+            {
+                case 0x9E:
+                    if (chip.keypad[chip.v_reg[x]])
+                    {
+                        chip.pc += 2;
+                    }
+                    break;
+
+                case 0xA1:
+                    if (!chip.keypad[chip.v_reg[x]])
+                    {
+                        chip.pc += 2;
+                    }
+                    break;
+            }
             break;
 
 
+        case 0xF:
+            switch(kk)
+            {
+                case 0x07:
+                    chip.v_reg[x] = chip.delay_timer;
+                    break;
+
+                case 0x0A:
+                {
+                    bool key_pressed = false;
+
+                    for (int i = 0; i < 16; i++)
+                    {
+                        if (chip.keypad[i])
+                        {
+                            chip.v_reg[x] = i;
+                            key_pressed = true;
+                            break;
+                        }
+                    }
+
+
+                    if (!key_pressed)
+                    {
+                        chip.pc -= 2;
+                    }
+
+                    break;
+                }
+
+                case 0x15:
+                    chip.delay_timer = chip.v_reg[x];
+                    break;
+
+                case 0x18:
+                    chip.sound_timer = chip.v_reg[x];
+                    break;
+
+                case 0x1E:
+                    chip.index_reg += chip.v_reg[x];
+                    break;
+
+                case 0x29:
+                    chip.index_reg = 5 * chip.v_reg[x];
+                    break;
+
+                case 0x33:
+                    chip.memory[chip.index_reg] = chip.v_reg[x] / 100;
+                    chip.memory[chip.index_reg + 1] = (chip.v_reg[x] / 10) % 10;
+                    chip.memory[chip.index_reg + 2] = chip.v_reg[x] % 10;
+                    break;
+
+                case 0x55:
+                    for (int i = 0; i <= x; i++)
+                    {   
+                        chip.memory[chip.index_reg + i] = chip.v_reg[i];
+                    }
+                    break;
+
+                case 0x65:
+                    for (int i = 0; i <= x; i++)
+                    {   
+                        chip.v_reg[i] = chip.memory[chip.index_reg + i];
+                    }
+                    break;
+            }
+
+            break;
     }
 }
