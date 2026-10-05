@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ncurses.h>
 
 typedef struct 
 {
@@ -19,6 +20,7 @@ typedef struct
     uint8_t  sound_timer;
     uint8_t  gfx[64][32];
     bool     keypad[16];
+    bool     run;
 } 
 my_chip;
 

@@ -2,15 +2,47 @@
 
 my_chip chip;
 
+const uint8_t fontset[80] = {
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+};
+
 void cycle(void);
+bool read_rom(char* filename);
 
 int main(void)
 {
 
-    int run = 1;
+    chip.run = 1;
 
-    while(run)
+    int fontset_size = sizeof(fontset);
+    for (int i = 0; i < fontset_size; i++)
     {
+        chip.memory[0x50 + i] = fontset[i];
+    }
+
+
+    while(chip.run)
+    {
+        if(!read_rom("test.ch8"))
+        {
+            printf("AN ERROR HAS OCCURED");
+            break;
+        }
         cycle();
     }
 
@@ -289,4 +321,40 @@ void cycle(void)
 
             break;
     }
+
+    printf("loop occured\n");
+}
+
+bool read_rom(char* filename)
+{
+
+    FILE* file = fopen(filename, "rb");
+    if (file == NULL)
+    {
+        fprintf(stderr, "ERROR file %s\n couldnt be openes", filename);
+        return false;
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    rewind(file);
+
+    long max_size = sizeof(chip.memory) - 0x200;
+    if (file_size > max_size)
+    {
+        fprintf(stderr, "ERROR file is too large! (%ld bytes, max. %ld bytes)\n", file_size, max_size);
+        fclose(file);
+        return false;
+    }
+    
+    size_t bytes_read = fread(&chip.memory[0x200], sizeof(uint8_t), file_size, file);
+    if (bytes_read != (size_t)file_size)
+    {
+        fprintf(stderr, "ERROR readig the ROM\n");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+    return true;
 }
