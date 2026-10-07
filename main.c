@@ -1,8 +1,10 @@
+#define _DEFAULT_SOURCE
 #include "main.h"
 
 my_chip chip;
 
-const uint8_t fontset[80] = {
+const uint8_t fontset[80] = 
+{
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
     0x20, 0x60, 0x20, 0x20, 0x70, // 1
     0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
@@ -23,11 +25,18 @@ const uint8_t fontset[80] = {
 
 void cycle(void);
 bool read_rom(char* filename);
+void flush_screen(void);
 
 int main(void)
 {
+    initscr();
+    cbreak();
+    noecho();
+    curs_set(0);
 
     chip.run = 1;
+    memset(chip.gfx, 0, sizeof(chip.gfx));
+    chip.pc = 0x200; //init pc to start at the program code
 
     int fontset_size = sizeof(fontset);
     for (int i = 0; i < fontset_size; i++)
@@ -35,18 +44,29 @@ int main(void)
         chip.memory[0x50 + i] = fontset[i];
     }
 
+    if(!read_rom("test_opcode.ch8"))
+    {
+        printf("AN ERROR HAS OCCURED");
+        printf("CPU shutting down");
+
+        endwin();
+
+        return 1;
+    }
 
     while(chip.run)
     {
-        if(!read_rom("test.ch8"))
-        {
-            printf("AN ERROR HAS OCCURED");
-            break;
-        }
         cycle();
+        flush_screen();
+
+        refresh();
+
+        usleep(1500);
     }
 
     printf("CPU shutting down");
+
+    endwin();
 
     return 0;
 }
@@ -295,7 +315,7 @@ void cycle(void)
                     break;
 
                 case 0x29:
-                    chip.index_reg = 5 * chip.v_reg[x];
+                    chip.index_reg = (5 * chip.v_reg[x]) + 0x50;
                     break;
 
                 case 0x33:
@@ -322,7 +342,7 @@ void cycle(void)
             break;
     }
 
-    printf("loop occured\n");
+    //printf("loop occured\n");
 }
 
 bool read_rom(char* filename)
@@ -357,4 +377,22 @@ bool read_rom(char* filename)
 
     fclose(file);
     return true;
+}
+
+void flush_screen(void)
+{
+    for (int x = 0; x < 64; x++)
+    {
+        for (int y = 0; y < 32; y++)
+        {
+            if (chip.gfx[x][y] == 1)
+            {
+                mvaddch(y, x, '#');
+            }
+            else
+            {
+                mvaddch(y, x, ' ');
+            }
+        }
+    }
 }
