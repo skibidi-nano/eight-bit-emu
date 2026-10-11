@@ -26,13 +26,21 @@ const uint8_t fontset[80] =
 void cycle(void);
 bool read_rom(char* filename);
 void flush_screen(void);
+long long get_current_time_ms(void);
+void is_pressed(int ch, long long current_time);
+void compare_time(keyboard *keys, long long current_time);
 
 int main(void)
 {
+    srand((unsigned int)time(NULL));
     initscr();
     cbreak();
     noecho();
     curs_set(0);
+    nodelay(stdscr, TRUE);
+    keypad(stdscr, TRUE);
+
+    int timer_timer = 0;
 
     chip.run = 1;
     memset(chip.gfx, 0, sizeof(chip.gfx));
@@ -44,7 +52,7 @@ int main(void)
         chip.memory[0x50 + i] = fontset[i];
     }
 
-    if(!read_rom("test_opcode.ch8"))
+    if(!read_rom("countr.ch8"))
     {
         printf("AN ERROR HAS OCCURED");
         printf("CPU shutting down");
@@ -56,12 +64,40 @@ int main(void)
 
     while(chip.run)
     {
-        cycle();
-        flush_screen();
+        long long current_time = get_current_time_ms();
+        int ch = getch();
+        if (ch == 'p')
+        {
+            break;
+        }
+        is_pressed(ch, current_time);
+        compare_time(&chip.keypad[0], current_time);
 
+        cycle();
+
+        timer_timer++;
+
+        if(timer_timer == 10)
+        {
+            timer_timer = 0;
+            if (chip.delay_timer != 0)
+            {
+                chip.delay_timer--;
+            }
+
+            if (chip.sound_timer != 0)
+            {
+                chip.sound_timer--;
+            }
+            
+            
+        }
+        
+
+        flush_screen();
         refresh();
 
-        usleep(1500);
+        usleep(1666);
     }
 
     printf("CPU shutting down");
@@ -179,7 +215,7 @@ void cycle(void)
                 case 0x6:
                 {
                     uint8_t lsb = chip.v_reg[x] & 0x01;
-                    chip.v_reg[x] >>= 1;
+                    chip.v_reg[x] = chip.v_reg[y] >> 1;
                     chip.v_reg[0xF] = lsb;
                     break;
                 }
@@ -256,14 +292,14 @@ void cycle(void)
             switch(kk)
             {
                 case 0x9E:
-                    if (chip.keypad[chip.v_reg[x]])
+                    if (chip.keypad[chip.v_reg[x]].is_true)
                     {
                         chip.pc += 2;
                     }
                     break;
 
                 case 0xA1:
-                    if (!chip.keypad[chip.v_reg[x]])
+                    if (!chip.keypad[chip.v_reg[x]].is_true)
                     {
                         chip.pc += 2;
                     }
@@ -285,7 +321,7 @@ void cycle(void)
 
                     for (int i = 0; i < 16; i++)
                     {
-                        if (chip.keypad[i])
+                        if (chip.keypad[i].is_true)
                         {
                             chip.v_reg[x] = i;
                             key_pressed = true;
@@ -329,6 +365,7 @@ void cycle(void)
                     {   
                         chip.memory[chip.index_reg + i] = chip.v_reg[i];
                     }
+                    chip.index_reg += x + 1;
                     break;
 
                 case 0x65:
@@ -336,13 +373,12 @@ void cycle(void)
                     {   
                         chip.v_reg[i] = chip.memory[chip.index_reg + i];
                     }
+                    chip.index_reg += x + 1;
                     break;
             }
 
             break;
     }
-
-    //printf("loop occured\n");
 }
 
 bool read_rom(char* filename)
@@ -392,6 +428,112 @@ void flush_screen(void)
             else
             {
                 mvaddch(y, x, ' ');
+            }
+        }
+    }
+}
+
+long long get_current_time_ms(void)
+{
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    long long return_val = ((long long)tv.tv_sec) * 1000 + (tv.tv_usec / 1000);
+
+    return return_val;
+}
+
+void is_pressed(int ch, long long current_time)
+{
+    int current_key = -1;
+    switch (ch)
+    {
+        case 49: // 1
+            current_key = 0x0;
+            break;
+
+        case 50: // 2
+            current_key = 0x1;
+            break;
+
+        case 51: // 3
+            current_key = 0x2;
+            break;
+
+        case 52: // 4
+            current_key = 0x3;
+            break;
+
+
+
+        case 113: // q
+            current_key = 0x4;
+            break;
+
+        case 119: // w
+            current_key = 0x5;
+            break;
+
+        case 101: // e
+            current_key = 0x6;
+            break;
+
+        case 114: // r
+            current_key = 0x7;
+            break;
+
+
+
+        case 97: // a
+            current_key = 0x8;
+            break;
+
+        case 115: // s
+            current_key = 0x9;
+            break;
+
+        case 100: // d
+            current_key = 0xA;
+            break;
+        
+        case 102: // f  
+            current_key = 0xB;
+            break;
+
+
+
+        case 121: // y
+            current_key = 0xC;
+            break;
+
+        case 120: // x
+            current_key = 0xD;
+            break;
+
+        case 99: // c
+            current_key = 0xE;
+            break;
+
+        case 118: // v
+            current_key = 0xF;
+            break;
+    }
+
+    chip.keypad[current_key].is_true = true;
+    chip.keypad[current_key].time_pressed = current_time;
+}
+
+void compare_time(keyboard *keys, long long current_time)
+{
+    for (int i = 0; i < 16; i++)
+    {
+        if(keys[i].is_true)
+        {
+            int time_distance = current_time - keys[i].time_pressed;
+            if (!(time_distance <= ACCEPTABLE_DISTANCE))
+            {
+                keys[i].is_true = false;
             }
         }
     }

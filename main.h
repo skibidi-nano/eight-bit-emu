@@ -6,8 +6,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <unistd.h>
+#include <time.h>
 #include <ncurses.h>
+
+#define ACCEPTABLE_DISTANCE 50
+
+typedef struct
+{
+    bool is_true;
+    int time_pressed;
+}
+keyboard;
 
 typedef struct 
 {
@@ -20,7 +31,7 @@ typedef struct
     uint8_t  delay_timer;
     uint8_t  sound_timer;
     uint8_t  gfx[64][32];
-    bool     keypad[16];
+    keyboard keypad[16];
     bool     run;
 } 
 my_chip;
