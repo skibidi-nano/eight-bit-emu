@@ -15,6 +15,7 @@ result-*
 
 # executable
 main
+chip-8
 
 # editor/system
 .DS_Store

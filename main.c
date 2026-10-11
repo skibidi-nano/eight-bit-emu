@@ -1,7 +1,60 @@
-#define _DEFAULT_SOURCE
-#include "main.h"
+/*
+    CHIP-8 emulator according to http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+    press 0 to exit the emulator cleanly, ctrl+c also works
+*/
 
-my_chip chip;
+#define _DEFAULT_SOURCE
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <time.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <ncurses.h>
+
+
+
+#define ACCEPTABLE_DISTANCE 50
+#define PS_PER_CYCLE 1666
+#define TIMER_CUTOFF 10
+#define PROGRAM_LOCATION_START 0x200
+#define FONT_LOCATION_START 0x50
+
+
+typedef struct 
+{
+    uint8_t  memory[4096];
+    uint8_t  v_reg[16];
+    uint16_t index_reg;
+    uint16_t pc;
+    uint8_t  sp;
+    uint16_t stack[16];
+    uint8_t  delay_timer;
+    uint8_t  sound_timer;
+    uint8_t  gfx[64][32];
+    long long keypad[16];
+} 
+my_chip;
+
+
+void cycle(void);
+void read_rom(char* filename);
+void flush_screen(void);
+long long get_current_time_ms(void);
+void is_pressed(int ch);
+bool key_pressed(int k);
+void die(const char *fmt, ...);
+
+
+static bool is_scr_init;
+static my_chip chip;
+
+static const char keymap[] = "1234qwerasdfyxcv";
 
 const uint8_t fontset[80] = 
 {
@@ -23,92 +76,13 @@ const uint8_t fontset[80] =
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 };
 
-void cycle(void);
-bool read_rom(char* filename);
-void flush_screen(void);
-long long get_current_time_ms(void);
-void is_pressed(int ch, long long current_time);
-void compare_time(keyboard *keys, long long current_time);
-
-int main(void)
-{
-    srand((unsigned int)time(NULL));
-    initscr();
-    cbreak();
-    noecho();
-    curs_set(0);
-    nodelay(stdscr, TRUE);
-    keypad(stdscr, TRUE);
-
-    int timer_timer = 0;
-
-    chip.run = 1;
-    memset(chip.gfx, 0, sizeof(chip.gfx));
-    chip.pc = 0x200; //init pc to start at the program code
-
-    int fontset_size = sizeof(fontset);
-    for (int i = 0; i < fontset_size; i++)
-    {
-        chip.memory[0x50 + i] = fontset[i];
-    }
-
-    if(!read_rom("countr.ch8"))
-    {
-        printf("AN ERROR HAS OCCURED");
-        printf("CPU shutting down");
-
-        endwin();
-
-        return 1;
-    }
-
-    while(chip.run)
-    {
-        long long current_time = get_current_time_ms();
-        int ch = getch();
-        if (ch == 'p')
-        {
-            break;
-        }
-        is_pressed(ch, current_time);
-        compare_time(&chip.keypad[0], current_time);
-
-        cycle();
-
-        timer_timer++;
-
-        if(timer_timer == 10)
-        {
-            timer_timer = 0;
-            if (chip.delay_timer != 0)
-            {
-                chip.delay_timer--;
-            }
-
-            if (chip.sound_timer != 0)
-            {
-                chip.sound_timer--;
-            }
-            
-            
-        }
-        
-
-        flush_screen();
-        refresh();
-
-        usleep(1666);
-    }
-
-    printf("CPU shutting down");
-
-    endwin();
-
-    return 0;
-}
-
 void cycle(void)
 {
+
+    /*
+        Function length is due to the CHIP-8 documentation mentioned at the top of the program.
+        Follows the docs from top to bottom
+    */
     uint16_t opcode = (chip.memory[chip.pc] << 8) | chip.memory[chip.pc + 1];
     chip.pc += 2;
 
@@ -134,6 +108,9 @@ void cycle(void)
                         chip.sp--;
                         chip.pc = chip.stack[chip.sp];
                     }
+                    break;
+
+                default:
                     break;
             }
             break;
@@ -231,10 +208,13 @@ void cycle(void)
                 case 0xE:
                 {
                     uint8_t msb = (chip.v_reg[x] & 0x80) >> 7;
-                    chip.v_reg[x] <<= 1;
+                    chip.v_reg[x] = chip.v_reg[y] << 1;
                     chip.v_reg[0xF] = msb;
                     break;
                 }
+
+                default:
+                    break;
 
             }
 
@@ -292,17 +272,20 @@ void cycle(void)
             switch(kk)
             {
                 case 0x9E:
-                    if (chip.keypad[chip.v_reg[x]].is_true)
+                    if (key_pressed(chip.v_reg[x]))
                     {
                         chip.pc += 2;
                     }
                     break;
 
                 case 0xA1:
-                    if (!chip.keypad[chip.v_reg[x]].is_true)
+                    if (!key_pressed(chip.v_reg[x]))
                     {
                         chip.pc += 2;
                     }
+                    break;
+
+                default:
                     break;
             }
             break;
@@ -317,24 +300,15 @@ void cycle(void)
 
                 case 0x0A:
                 {
-                    bool key_pressed = false;
-
-                    for (int i = 0; i < 16; i++)
+                    for (int i = 0; i < 16; i++) 
                     {
-                        if (chip.keypad[i].is_true)
+                        if (key_pressed(i)) 
                         {
                             chip.v_reg[x] = i;
-                            key_pressed = true;
-                            break;
+                            return;
                         }
                     }
-
-
-                    if (!key_pressed)
-                    {
-                        chip.pc -= 2;
-                    }
-
+                    chip.pc -= 2;
                     break;
                 }
 
@@ -351,7 +325,7 @@ void cycle(void)
                     break;
 
                 case 0x29:
-                    chip.index_reg = (5 * chip.v_reg[x]) + 0x50;
+                    chip.index_reg = (5 * chip.v_reg[x]) + FONT_LOCATION_START;
                     break;
 
                 case 0x33:
@@ -375,59 +349,61 @@ void cycle(void)
                     }
                     chip.index_reg += x + 1;
                     break;
+
+                default:
+                    break;
             }
 
             break;
+
+        default:
+            die("unknown opcode %04x at %03x\n", opcode, chip.pc - 2);
     }
 }
 
-bool read_rom(char* filename)
+void read_rom(char* filename)
 {
 
     FILE* file = fopen(filename, "rb");
     if (file == NULL)
     {
-        fprintf(stderr, "ERROR file %s\n couldnt be openes", filename);
-        return false;
+        die("Couldn't open file %s: %s\n", filename, strerror(errno));
     }
 
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
     rewind(file);
 
-    long max_size = sizeof(chip.memory) - 0x200;
+    long max_size = sizeof(chip.memory) - PROGRAM_LOCATION_START;
     if (file_size > max_size)
     {
-        fprintf(stderr, "ERROR file is too large! (%ld bytes, max. %ld bytes)\n", file_size, max_size);
         fclose(file);
-        return false;
+        die("error file is too large! (%ld bytes, max. %ld bytes)\n", file_size, max_size);
     }
     
-    size_t bytes_read = fread(&chip.memory[0x200], sizeof(uint8_t), file_size, file);
+    size_t bytes_read = fread(&chip.memory[PROGRAM_LOCATION_START], sizeof(uint8_t), file_size, file);
     if (bytes_read != (size_t)file_size)
     {
-        fprintf(stderr, "ERROR readig the ROM\n");
         fclose(file);
-        return false;
+        die("error reading the rom\n");
     }
 
     fclose(file);
-    return true;
 }
 
 void flush_screen(void)
 {
-    for (int x = 0; x < 64; x++)
+    for (int col = 0; col < 64; col++)
     {
-        for (int y = 0; y < 32; y++)
+        for (int row = 0; row < 32; row++)
         {
-            if (chip.gfx[x][y] == 1)
+            if (chip.gfx[col][row] == 1)
             {
-                mvaddch(y, x, '#');
+                mvaddch(row, col, '#');
             }
             else
             {
-                mvaddch(y, x, ' ');
+                mvaddch(row, col, ' ');
             }
         }
     }
@@ -444,97 +420,108 @@ long long get_current_time_ms(void)
     return return_val;
 }
 
-void is_pressed(int ch, long long current_time)
+void is_pressed(int ch)
 {
-    int current_key = -1;
-    switch (ch)
+    const char *p = strchr(keymap, ch);
+    if (p == NULL)
     {
-        case 49: // 1
-            current_key = 0x0;
-            break;
-
-        case 50: // 2
-            current_key = 0x1;
-            break;
-
-        case 51: // 3
-            current_key = 0x2;
-            break;
-
-        case 52: // 4
-            current_key = 0x3;
-            break;
-
-
-
-        case 113: // q
-            current_key = 0x4;
-            break;
-
-        case 119: // w
-            current_key = 0x5;
-            break;
-
-        case 101: // e
-            current_key = 0x6;
-            break;
-
-        case 114: // r
-            current_key = 0x7;
-            break;
-
-
-
-        case 97: // a
-            current_key = 0x8;
-            break;
-
-        case 115: // s
-            current_key = 0x9;
-            break;
-
-        case 100: // d
-            current_key = 0xA;
-            break;
-        
-        case 102: // f  
-            current_key = 0xB;
-            break;
-
-
-
-        case 121: // y
-            current_key = 0xC;
-            break;
-
-        case 120: // x
-            current_key = 0xD;
-            break;
-
-        case 99: // c
-            current_key = 0xE;
-            break;
-
-        case 118: // v
-            current_key = 0xF;
-            break;
+        return;
     }
-
-    chip.keypad[current_key].is_true = true;
-    chip.keypad[current_key].time_pressed = current_time;
+    
+    chip.keypad[p - keymap] = get_current_time_ms();
 }
 
-void compare_time(keyboard *keys, long long current_time)
+bool key_pressed(int k)
 {
-    for (int i = 0; i < 16; i++)
+    long long now = get_current_time_ms();
+    return (now - chip.keypad[k]) < ACCEPTABLE_DISTANCE;
+}
+
+void die(const char *fmt, ...)
+{
+    if(is_scr_init)
     {
-        if(keys[i].is_true)
-        {
-            int time_distance = current_time - keys[i].time_pressed;
-            if (!(time_distance <= ACCEPTABLE_DISTANCE))
-            {
-                keys[i].is_true = false;
-            }
-        }
+        endwin();
     }
+
+    va_list ap;
+    
+    va_start(ap, fmt);
+    
+    vfprintf(stderr, fmt, ap);
+
+    va_end(ap);
+    
+    exit(1);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        die("Proper usage: %s FILENAME.ch8\n", argv[0]);
+    }
+    srand((unsigned int)time(NULL));
+    initscr();
+    is_scr_init = true;
+    cbreak();
+    noecho();
+    curs_set(0);
+    nodelay(stdscr, TRUE);
+    keypad(stdscr, TRUE);
+
+    int timer_timer = 0;
+
+    chip.pc = PROGRAM_LOCATION_START;
+
+    int fontset_size = sizeof(fontset);
+    for (int i = 0; i < fontset_size; i++)
+    {
+        chip.memory[FONT_LOCATION_START + i] = fontset[i];
+    }
+
+    read_rom(argv[1]);
+
+    while(true)
+    {
+        int ch = getch();
+        if (ch == '0')
+        {
+            break;
+        }
+        is_pressed(ch);
+
+        cycle();
+
+        timer_timer++;
+
+        if(timer_timer == TIMER_CUTOFF)
+        {
+            timer_timer = 0;
+            if (chip.delay_timer != 0)
+            {
+                chip.delay_timer--;
+            }
+
+            if (chip.sound_timer != 0)
+            {
+                chip.sound_timer--;
+            }
+            
+            
+        }
+        
+
+        flush_screen();
+        refresh();
+
+        usleep(PS_PER_CYCLE);
+    }
+
+    
+    fprintf(stderr, "CPU shutting down\n");
+
+    endwin();
+
+    return 0;
 }
