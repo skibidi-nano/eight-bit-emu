@@ -2,8 +2,11 @@
 
 ## KEY FEATURES
 
-- All basic instructions named by http://devernay.free.fr/hacks/chip8/C8TECH10.HTM (go-to CHIP-8 docs)
+- All basic instructions named by http://devernay.free.fr/hacks/chip8/C8TECH10.HTM (the go-to CHIP-8 docs)
 - Terminal output according to the docs using ncurses for graphics
+- Mostly suckless
+- Error handling with output to stderr
+- Loading roms using terminal input
 
 ## How build
 
@@ -39,11 +42,11 @@ You can build using either the make file or not (it is up to you if you want to 
 
 ## How to use
 
-    The program needs roms to load to do anything. Currently there is the countr.ch8 file in the repo which needs to be downloaded and put into the project folder. 
-    ONLY .ch8 FILES ARE SUPPORTED
-    You can also download more ROMS on https://github.com/kripod/chip8-roms (i dont have any relations to the repo or creator, i just found their repo)
+The program needs roms to load to do anything. Currently there is the countr.ch8 file in the repo which needs to be downloaded and put into the project folder. 
+ONLY .ch8 FILES ARE SUPPORTED
+You can also download more ROMS on https://github.com/kripod/chip8-roms (i dont have any relations to the repo or creator, i just found their repo)
 
-    To run the program type either:
+To run the program enter:
 
     ./main FILENAME.ch8
 
