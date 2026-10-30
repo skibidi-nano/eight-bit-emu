@@ -427,7 +427,6 @@ void is_pressed(int ch)
     {
         return;
     }
-    
     chip.keypad[p - keymap] = get_current_time_ms();
 }
 

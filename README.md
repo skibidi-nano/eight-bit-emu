@@ -18,7 +18,6 @@ You can build using either the make file or not (it is up to you if you want to 
     You will need the following packages:
     - clang
     - gnumake
-    - ncurses
 
     NOTE: 
         - If on nixos you can use my shell.nix also in the project files

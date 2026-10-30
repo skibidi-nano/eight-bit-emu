@@ -1,13 +1,18 @@
 { pkgs ? import <nixpkgs> {} }:
 
+let
+  ncursesStatic = pkgs.ncurses.override { enableStatic = true; };
+in
 pkgs.mkShell {
-  buildInputs = with pkgs; [
+  nativeBuildInputs = with pkgs; [
     clang
-    clang-tools 
-    gdb         
-    gnumake  
-    ncurses   
-    valgrind
-    cgdb
+    gnumake
+    file
+  ];
+
+  buildInputs = [
+    pkgs.glibc.static
+    ncursesStatic
+    ncursesStatic.dev 
   ];
 }
